@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mv store.py src/store.py)",
+      "Bash(mv config/oauth.py src/config/oauth.py)",
+      "Bash(mv config/__init__.py src/config/__init__.py)",
+      "Bash(mv middleware/protect.py src/middleware/protect.py)",
+      "Bash(mv middleware/__init__.py src/middleware/__init__.py)"
+    ]
+  }
+}
