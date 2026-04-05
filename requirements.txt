@@ -5,3 +5,6 @@ PyJWT
 google-auth
 authlib
 requests
+twilio
+apscheduler
+sqlalchemy

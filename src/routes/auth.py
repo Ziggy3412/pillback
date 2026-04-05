@@ -8,6 +8,7 @@ from google.oauth2 import id_token
 
 from src.config.oauth import oauth
 from src.middleware.protect import protect
+from src.store import upsert_user
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -60,8 +61,9 @@ def google_token_exchange():
             'email': payload.get('email'),
             'photo': payload.get('picture'),
         }
+        profile = upsert_user(user['id'], user)
         token = issue_jwt(user)
-        response = jsonify({'user': user, 'token': token})
+        response = jsonify({'user': {**user, 'onboarded': profile['onboarded']}, 'token': token})
         set_token_cookie(response, token)
         return response
     except Exception:
@@ -94,6 +96,7 @@ def google_callback():
             'email': userinfo.get('email'),
             'photo': userinfo.get('picture'),
         }
+        upsert_user(user['id'], user)
         jwt_token = issue_jwt(user)
         is_mobile = request.args.get('state') == 'mobile'
 

@@ -1,0 +1,35 @@
+[
+  {
+    "id": 1775341228806,
+    "userId": "103269004427030485827",
+    "name": "sdrtghjsdrhjrth",
+    "medication": "srthsrth",
+    "dosage": "srthsrth",
+    "urgency": 4,
+    "schedule": {
+      "frequency": "every_other_day",
+      "startDate": "2026-04-22",
+      "times": [
+        "3:02 AM"
+      ]
+    },
+    "notes": "wegwerg",
+    "reminderEnabled": true
+  },
+  {
+    "id": 1775342809315,
+    "userId": "103269004427030485827",
+    "name": "ghj",
+    "medication": "hukjk",
+    "dosage": "hjkhjk",
+    "urgency": 4,
+    "schedule": {
+      "frequency": "every_day",
+      "times": [
+        "2:03 AM"
+      ]
+    },
+    "notes": "gyigyhui",
+    "reminderEnabled": true
+  }
+]
