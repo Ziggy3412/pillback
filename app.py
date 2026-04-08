@@ -1,10 +1,17 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+import logging
 import os
 import sys
 import time
 from datetime import datetime, timedelta
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    stream=sys.stdout,
+)
 
 # Validate required env vars before any other module reads them
 REQUIRED_ENV = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'JWT_SECRET']
@@ -49,13 +56,26 @@ init_oauth(app)
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 init_scheduler()
 
+# Re-register all saved reminders so jobs survive Railway redeploys
+# (in-memory jobstore is wiped on every restart)
+_startup_reminders = load_reminders()
+print(f'[APP] Re-registering {len(_startup_reminders)} reminder(s) from JSON store on startup')
+for _r in _startup_reminders:
+    try:
+        schedule_reminder(_r)
+    except Exception as _e:
+        import traceback as _tb
+        print(f'[APP] Failed to re-register reminder {_r.get("id")}: {_tb.format_exc()}')
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 app.register_blueprint(auth_bp, url_prefix='/auth')
 
 
 @app.get('/api/health')
 def health():
-    return jsonify({'status': 'ok'})
+    from src.scheduler import scheduler as _sched
+    jobs = _sched.get_jobs() if _sched else []
+    return jsonify({'status': 'ok', 'scheduler_jobs': len(jobs)})
 
 
 # ── Protected pill routes ─────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import os
 import logging
+import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -22,15 +23,25 @@ def send_whatsapp(to: str, body: str) -> bool:
     token = os.getenv('TWILIO_AUTH_TOKEN')
 
     if not (sid and token):
+        print(f'[SMS] Twilio credentials not configured — skipping WhatsApp to {to}')
         logger.warning('Twilio credentials not configured — skipping WhatsApp to %s', to)
         return False
 
+    to_wa = _wa(to)
+    print(f'[SMS] Calling Twilio — from={WHATSAPP_FROM} to={to_wa}')
+    print(f'[SMS] Message body: {body}')
+    logger.info('Calling Twilio — from=%s to=%s', WHATSAPP_FROM, to_wa)
+    logger.info('Message body: %s', body)
+
     try:
-        _client().messages.create(body=body, from_=WHATSAPP_FROM, to=_wa(to))
-        logger.info('WhatsApp sent to %s', to)
+        msg = _client().messages.create(body=body, from_=WHATSAPP_FROM, to=to_wa)
+        print(f'[SMS] Twilio response — SID={msg.sid} status={msg.status} error_code={msg.error_code} error_message={msg.error_message}')
+        logger.info('Twilio response — SID=%s status=%s error_code=%s error_message=%s', msg.sid, msg.status, msg.error_code, msg.error_message)
         return True
     except Exception:
-        logger.exception('Failed to send WhatsApp to %s', to)
+        tb = traceback.format_exc()
+        print(f'[SMS] Failed to send WhatsApp to {to_wa}:\n{tb}')
+        logger.error('Failed to send WhatsApp to %s:\n%s', to_wa, tb)
         return False
 
 

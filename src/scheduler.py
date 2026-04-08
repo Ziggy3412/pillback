@@ -1,20 +1,19 @@
 """
 APScheduler setup and job definitions.
 
-Jobs are persisted to data/jobs.db (SQLite) so they survive restarts.
+Uses in-memory jobstore (Railway filesystem is ephemeral — SQLite jobs were
+lost on every redeploy). app.py re-registers all saved reminders on startup.
 """
 
 import logging
 import os
+import traceback
 from datetime import datetime, timedelta
 
-from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 
 logger = logging.getLogger(__name__)
-
-DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
-DB_PATH = os.path.join(DATA_DIR, 'jobs.db')
 
 # Module-level scheduler instance – imported by app.py and job functions below.
 scheduler: BackgroundScheduler = None  # type: ignore[assignment]
@@ -22,13 +21,14 @@ scheduler: BackgroundScheduler = None  # type: ignore[assignment]
 
 def init_scheduler() -> BackgroundScheduler:
     global scheduler
-    os.makedirs(DATA_DIR, exist_ok=True)
     scheduler = BackgroundScheduler(
-        jobstores={'default': SQLAlchemyJobStore(url=f'sqlite:///{DB_PATH}')},
+        jobstores={'default': MemoryJobStore()},
         job_defaults={'misfire_grace_time': 60 * 60},  # 1 hour grace window
     )
     scheduler.start()
-    logger.info('Scheduler started (job store: %s)', DB_PATH)
+    job_count = len(scheduler.get_jobs())
+    print(f'[SCHEDULER] Scheduler started (in-memory jobstore). Jobs loaded: {job_count}')
+    logger.info('Scheduler started (in-memory jobstore). Jobs loaded: %d', job_count)
     return scheduler
 
 
@@ -71,8 +71,14 @@ def send_reminder_job(
     from src.sms import send_patient_reminder
     from src.confirmations import add as add_confirmation
 
-    logger.info('Sending WhatsApp reminder %s to %s', reminder_id, patient_phone)
-    sent = send_patient_reminder(patient_phone, medication, dosage)
+    print(f'[SCHEDULER] Job fired — sending WhatsApp to {patient_phone} for {medication} (reminder_id={reminder_id}, patient={patient_name})')
+    logger.info('Job fired — sending WhatsApp to %s for %s (reminder_id=%s, patient=%s)', patient_phone, medication, reminder_id, patient_name)
+    try:
+        sent = send_patient_reminder(patient_phone, medication, dosage)
+    except Exception:
+        print(f'[SCHEDULER] Exception in send_reminder_job:\n{traceback.format_exc()}')
+        logger.error('Exception in send_reminder_job:\n%s', traceback.format_exc())
+        return
 
     if sent:
         # Unique key for this specific fire so multiple fires don't collide
@@ -125,6 +131,10 @@ def schedule_reminder(reminder: dict) -> None:
     sched = reminder.get('schedule') or {}
     frequency = sched.get('frequency', 'daily')
     times = sched.get('times') or ['8:00 AM']
+    patient_name = reminder.get('patientName', '?')
+    medication = reminder.get('medication', '?')
+    print(f'[SCHEDULER] Scheduling reminder for {patient_name} | medication={medication} | times={times} | frequency={frequency}')
+    logger.info('Scheduling reminder for %s | medication=%s | times=%s | frequency=%s', patient_name, medication, times, frequency)
     start_date_str = sched.get('startDate') or datetime.now().strftime('%Y-%m-%d')
     days = sched.get('days') or []
     interval_days = int(sched.get('interval') or 1)
@@ -148,39 +158,43 @@ def schedule_reminder(reminder: dict) -> None:
 
         job_id = f'reminder_{rid}_{i}'
 
-        if frequency == 'interval':
-            start_dt = f"{start_date_str} {hour:02d}:{minute:02d}:00"
-            scheduler.add_job(
-                send_reminder_job,
-                'interval',
-                days=interval_days,
-                start_date=start_dt,
-                id=job_id,
-                replace_existing=True,
-                args=args,
-            )
-        elif frequency == 'weekly':
-            scheduler.add_job(
-                send_reminder_job,
-                'cron',
-                day_of_week=_map_days(days),
-                hour=hour,
-                minute=minute,
-                start_date=start_date_str,
-                id=job_id,
-                replace_existing=True,
-                args=args,
-            )
-        else:  # daily (and anything unrecognised)
-            scheduler.add_job(
-                send_reminder_job,
-                'cron',
-                hour=hour,
-                minute=minute,
-                start_date=start_date_str,
-                id=job_id,
-                replace_existing=True,
-                args=args,
-            )
-
-        logger.info('Scheduled job %s (freq=%s, time=%s)', job_id, frequency, time_str)
+        try:
+            if frequency == 'interval':
+                start_dt = f"{start_date_str} {hour:02d}:{minute:02d}:00"
+                scheduler.add_job(
+                    send_reminder_job,
+                    'interval',
+                    days=interval_days,
+                    start_date=start_dt,
+                    id=job_id,
+                    replace_existing=True,
+                    args=args,
+                )
+            elif frequency == 'weekly':
+                scheduler.add_job(
+                    send_reminder_job,
+                    'cron',
+                    day_of_week=_map_days(days),
+                    hour=hour,
+                    minute=minute,
+                    start_date=start_date_str,
+                    id=job_id,
+                    replace_existing=True,
+                    args=args,
+                )
+            else:  # daily (and anything unrecognised)
+                scheduler.add_job(
+                    send_reminder_job,
+                    'cron',
+                    hour=hour,
+                    minute=minute,
+                    start_date=start_date_str,
+                    id=job_id,
+                    replace_existing=True,
+                    args=args,
+                )
+            print(f'[SCHEDULER] Registered job {job_id} (freq={frequency}, time={time_str}, phone={args[1]})')
+            logger.info('Registered job %s (freq=%s, time=%s, phone=%s)', job_id, frequency, time_str, args[1])
+        except Exception:
+            print(f'[SCHEDULER] Failed to register job {job_id}:\n{traceback.format_exc()}')
+            logger.error('Failed to register job %s:\n%s', job_id, traceback.format_exc())
