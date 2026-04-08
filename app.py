@@ -56,6 +56,12 @@ init_oauth(app)
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 init_scheduler()
 
+# Log partial Twilio credentials to verify env vars are loaded
+_sid = os.getenv('TWILIO_ACCOUNT_SID', '')
+_tok = os.getenv('TWILIO_AUTH_TOKEN', '')
+print(f'[APP] TWILIO_ACCOUNT_SID starts with: {_sid[:4] or "(not set)"}')
+print(f'[APP] TWILIO_AUTH_TOKEN starts with:  {_tok[:4] or "(not set)"}')
+
 # Re-register all saved reminders so jobs survive Railway redeploys
 # (in-memory jobstore is wiped on every restart)
 _startup_reminders = load_reminders()
