@@ -10,10 +10,13 @@ import os
 import traceback
 from datetime import datetime, timedelta
 
+import pytz
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 
 logger = logging.getLogger(__name__)
+
+TZ = pytz.timezone('America/Los_Angeles')
 
 # Module-level scheduler instance – imported by app.py and job functions below.
 scheduler: BackgroundScheduler = None  # type: ignore[assignment]
@@ -24,11 +27,12 @@ def init_scheduler() -> BackgroundScheduler:
     scheduler = BackgroundScheduler(
         jobstores={'default': MemoryJobStore()},
         job_defaults={'misfire_grace_time': 60 * 60},  # 1 hour grace window
+        timezone=TZ,
     )
     scheduler.start()
     job_count = len(scheduler.get_jobs())
-    print(f'[SCHEDULER] Scheduler started (in-memory jobstore). Jobs loaded: {job_count}')
-    logger.info('Scheduler started (in-memory jobstore). Jobs loaded: %d', job_count)
+    print(f'[SCHEDULER] Scheduler started (in-memory, timezone=America/Los_Angeles). Jobs loaded: {job_count}')
+    logger.info('Scheduler started (in-memory, timezone=America/Los_Angeles). Jobs loaded: %d', job_count)
     return scheduler
 
 
@@ -82,13 +86,13 @@ def send_reminder_job(
 
     if sent:
         # Unique key for this specific fire so multiple fires don't collide
-        key = f"{reminder_id}_{int(datetime.utcnow().timestamp())}"
+        key = f"{reminder_id}_{int(datetime.now(tz=TZ).timestamp())}"
         add_confirmation(key, patient_phone, patient_name, medication, dosage, caregiver_phones)
 
         scheduler.add_job(
             check_confirmation_job,
             'date',
-            run_date=datetime.now() + timedelta(minutes=5),
+            run_date=datetime.now(tz=TZ) + timedelta(minutes=5),
             args=[key, patient_name, medication, dosage, caregiver_phones],
             id=f'check_{key}',
             replace_existing=True,
@@ -135,7 +139,7 @@ def schedule_reminder(reminder: dict) -> None:
     medication = reminder.get('medication', '?')
     print(f'[SCHEDULER] Scheduling reminder for {patient_name} | medication={medication} | times={times} | frequency={frequency}')
     logger.info('Scheduling reminder for %s | medication=%s | times=%s | frequency=%s', patient_name, medication, times, frequency)
-    start_date_str = sched.get('startDate') or datetime.now().strftime('%Y-%m-%d')
+    start_date_str = sched.get('startDate') or datetime.now(tz=TZ).strftime('%Y-%m-%d')
     days = sched.get('days') or []
     interval_days = int(sched.get('interval') or 1)
 
@@ -159,13 +163,16 @@ def schedule_reminder(reminder: dict) -> None:
         job_id = f'reminder_{rid}_{i}'
 
         try:
+            # Build tz-aware start datetime so APScheduler fires in LA local time
+            naive_start = datetime.strptime(f"{start_date_str} {hour:02d}:{minute:02d}:00", '%Y-%m-%d %H:%M:%S')
+            start_dt_la = TZ.localize(naive_start)
+
             if frequency == 'interval':
-                start_dt = f"{start_date_str} {hour:02d}:{minute:02d}:00"
                 scheduler.add_job(
                     send_reminder_job,
                     'interval',
                     days=interval_days,
-                    start_date=start_dt,
+                    start_date=start_dt_la,
                     id=job_id,
                     replace_existing=True,
                     args=args,
@@ -177,7 +184,8 @@ def schedule_reminder(reminder: dict) -> None:
                     day_of_week=_map_days(days),
                     hour=hour,
                     minute=minute,
-                    start_date=start_date_str,
+                    start_date=start_dt_la,
+                    timezone=TZ,
                     id=job_id,
                     replace_existing=True,
                     args=args,
@@ -188,7 +196,8 @@ def schedule_reminder(reminder: dict) -> None:
                     'cron',
                     hour=hour,
                     minute=minute,
-                    start_date=start_date_str,
+                    start_date=start_dt_la,
+                    timezone=TZ,
                     id=job_id,
                     replace_existing=True,
                     args=args,
