@@ -12,6 +12,7 @@ load_dotenv()
 
 import os
 from twilio.rest import Client
+from twilio.rest.content.v1.content import ContentList
 
 sid = os.getenv('TWILIO_ACCOUNT_SID')
 token = os.getenv('TWILIO_AUTH_TOKEN')
@@ -22,28 +23,37 @@ if not (sid and token):
 
 client = Client(sid, token)
 
-content = client.content.v1.contents.create(
-    friendly_name='pillpal_reminder_v1',
-    language='en',
-    variables={'1': 'medication', '2': 'dosage'},
-    types={
-        'twilio/quick-reply': {
-            'body': '💊 PillPal Reminder: Time to take your {{1}} {{2}}. Did you take it?',
-            'actions': [
-                {'title': '✅ Taken', 'id': 'taken'},
-            ],
-        }
-    },
-)
+# Build the request using the SDK's typed objects (twilio 9.x API)
+action = ContentList.QuickReplyAction({
+    'title': '✅ Taken',
+    'id': 'taken',
+})
+
+quick_reply = ContentList.TwilioQuickReply({
+    'body': '💊 PillPal Reminder: Time to take your {{1}} {{2}}. Did you take it?',
+    'actions': [action],
+})
+
+types = ContentList.Types({
+    'twilio/quick-reply': quick_reply,
+})
+
+request = ContentList.ContentCreateRequest({
+    'friendly_name': 'pillpal_reminder_v1',
+    'language': 'en',
+    'variables': {'1': 'medication', '2': 'dosage'},
+    'types': types,
+})
+
+content = client.content.v1.contents.create(request)
 
 print()
-print(f'✅ Template created!')
-print(f'   SID:           {content.sid}')
-print(f'   Friendly name: {content.friendly_name}')
-print(f'   Status:        {content.types}')
+print('Template created!')
+print(f'  SID:           {content.sid}')
+print(f'  Friendly name: {content.friendly_name}')
 print()
-print(f'Add to .env and Railway environment variables:')
-print(f'   TWILIO_CONTENT_SID={content.sid}')
+print('Add to .env and Railway environment variables:')
+print(f'  TWILIO_CONTENT_SID={content.sid}')
 print()
 print('NOTE: For production WhatsApp (non-sandbox), the template also needs')
 print('Meta approval. Submit it in the Twilio Console under Content Templates.')
