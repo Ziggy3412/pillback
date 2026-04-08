@@ -273,9 +273,9 @@ def whatsapp_reply():
     """
     from src.confirmations import mark_confirmed_by_phone
     from_number = request.form.get('From', '')  # arrives as "whatsapp:+1..."
-    body = request.form.get('Body', '').strip()
-    # Accept plain "TAKEN" reply AND the quick-reply button title "✅ Taken"
-    confirmed = body.upper() == 'TAKEN' or body == '✅ Taken'
+    body = request.form.get('Body', '').strip().upper()
+    # Accept any capitalisation of "TAKEN" and the quick-reply button title "✅ Taken"
+    confirmed = body == 'TAKEN' or body == '✅ TAKEN'
 
     if from_number and confirmed:
         mark_confirmed_by_phone(from_number)
